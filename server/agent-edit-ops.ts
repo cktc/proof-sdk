@@ -92,6 +92,15 @@ function looksLikeInlineMarkdownFormatting(content: string): boolean {
   return false;
 }
 
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function maybeWrapAuthored(content: string, by: string | undefined, allow: boolean): string {
   if (!allow) return content;
   if (!by || !by.trim()) return content;
@@ -99,7 +108,8 @@ function maybeWrapAuthored(content: string, by: string | undefined, allow: boole
   if (/data-proof\s*=\s*("|')authored(")?/i.test(normalized)) return content;
   if (!contentLooksInline(normalized)) return content;
   if (looksLikeInlineMarkdownFormatting(normalized)) return content;
-  return `<span data-proof="authored" data-by="${by.trim()}">${normalized}</span>`;
+  const safeBy = escapeHtmlAttribute(by.trim());
+  return `<span data-proof="authored" data-by="${safeBy}">${normalized}</span>`;
 }
 
 function computeLineOffsets(src: string): number[] {
