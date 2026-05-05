@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'crypto';
 import { Router, text, type Request, type Response } from 'express';
 import { generateSlug } from './slug.js';
 import {
@@ -182,6 +182,13 @@ function parsePositiveIntEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function timingSafeEqualStrings(a: string, b: string): boolean {
+  const ab = Buffer.from(a, 'utf8');
+  const bb = Buffer.from(b, 'utf8');
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -468,7 +475,7 @@ async function authorizeDirectShareRequest(
       });
       return null;
     }
-    if (presented === requiredApiKey) {
+    if (presented && timingSafeEqualStrings(presented, requiredApiKey)) {
       return { authed: true, authMode, actor: 'api-key' };
     }
     res.status(401).json({
@@ -480,7 +487,12 @@ async function authorizeDirectShareRequest(
   }
 
   const requiredApiKey = getDirectShareApiKey();
-  if (authMode === 'oauth_or_api_key' && requiredApiKey && presented === requiredApiKey) {
+  if (
+    authMode === 'oauth_or_api_key' &&
+    requiredApiKey &&
+    presented &&
+    timingSafeEqualStrings(presented, requiredApiKey)
+  ) {
     return { authed: true, authMode, actor: 'api-key' };
   }
 
