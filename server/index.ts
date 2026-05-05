@@ -10,6 +10,7 @@ import { createBridgeMountRouter } from './bridge.js';
 import { getCollabRuntime, startCollabRuntimeEmbedded } from './collab.js';
 import { discoveryRoutes } from './discovery-routes.js';
 import { shareWebRoutes } from './share-web-routes.js';
+import { newDocRoutes } from './new-doc-routes.js';
 import {
   capabilitiesPayload,
   enforceApiClientCompatibility,
@@ -120,6 +121,7 @@ async function main(): Promise<void> {
     res.json(capabilitiesPayload());
   });
 
+  app.use(newDocRoutes);
   app.use(discoveryRoutes);
   app.use('/api', enforceApiClientCompatibility, apiRoutes);
   app.use('/api/agent', agentRoutes);
