@@ -251,10 +251,29 @@ function hasRole(role: ShareRole | null, allowed: ShareRole[]): boolean {
   return allowed.includes(role);
 }
 
+const MAX_IDEMPOTENCY_KEY_LENGTH = 256;
+
+function rejectOverlongIdempotencyKey(req: Request, res: Response): boolean {
+  const header = req.header('idempotency-key') ?? req.header('x-idempotency-key');
+  if (typeof header === 'string' && header.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+    res.status(400).json({
+      success: false,
+      error: 'Idempotency-Key header exceeds maximum length',
+      code: 'IDEMPOTENCY_KEY_TOO_LONG',
+      maxLength: MAX_IDEMPOTENCY_KEY_LENGTH,
+    });
+    return true;
+  }
+  return false;
+}
+
 function getIdempotencyKey(req: Request): string | null {
   const header = req.header('idempotency-key') ?? req.header('x-idempotency-key');
-  if (typeof header === 'string' && header.trim()) return header.trim();
-  return null;
+  if (typeof header !== 'string') return null;
+  const trimmed = header.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > MAX_IDEMPOTENCY_KEY_LENGTH) return null;
+  return trimmed;
 }
 
 function hashRequestBody(body: unknown): string {
@@ -420,6 +439,15 @@ async function maybeReplayIdempotentMutation(
   mutationRoute: string,
   routeKey: string,
 ): Promise<IdempotencyReplayResult> {
+  if (rejectOverlongIdempotencyKey(req, res)) {
+    return {
+      handled: true,
+      idempotencyKey: null,
+      requestHash: null,
+      reservation: null,
+      settled: true,
+    };
+  }
   const idempotencyKey = getIdempotencyKey(req);
   if (!idempotencyKey) {
     return {
@@ -1927,6 +1955,7 @@ agentRoutes.use((req: Request, res: Response, next) => {
     next();
     return;
   }
+  if (rejectOverlongIdempotencyKey(req, res)) return;
   const stage = getMutationContractStage();
   if (!isIdempotencyRequired(stage)) {
     next();

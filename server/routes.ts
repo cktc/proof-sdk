@@ -150,11 +150,28 @@ function parseJson(value: string): Record<string, unknown> {
   }
 }
 
+const MAX_IDEMPOTENCY_KEY_LENGTH = 256;
+
+function rejectOverlongIdempotencyKey(req: Request, res: Response): boolean {
+  const header = req.header('idempotency-key') ?? req.header('x-idempotency-key');
+  if (typeof header === 'string' && header.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+    res.status(400).json({
+      error: 'Idempotency-Key header exceeds maximum length',
+      code: 'IDEMPOTENCY_KEY_TOO_LONG',
+      maxLength: MAX_IDEMPOTENCY_KEY_LENGTH,
+    });
+    return true;
+  }
+  return false;
+}
+
 function getIdempotencyKey(req: Request): string | null {
   const header = req.header('idempotency-key') ?? req.header('x-idempotency-key');
   if (typeof header !== 'string') return null;
   const trimmed = header.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > MAX_IDEMPOTENCY_KEY_LENGTH) return null;
+  return trimmed;
 }
 
 function hashRequestBody(body: unknown): string {
@@ -1604,6 +1621,7 @@ apiRoutes.post('/documents/:slug/ops', opsRateLimiter, async (req: Request, res:
     return;
   }
   const { op, payload } = parsed;
+  if (rejectOverlongIdempotencyKey(req, res)) return;
   const participation = maybeBuildAgentParticipation(req, { ...rawBody, ...payload });
   const stage = getMutationContractStage();
   const idempotencyKey = getIdempotencyKey(req);
