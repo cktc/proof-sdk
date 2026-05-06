@@ -216,14 +216,27 @@ function shouldDeferOnDemandProjectionRepair(
 ): boolean {
   if (!slug) return false;
   const activeCollabClients = getActiveCollabClientCount(slug);
-  const accessEpoch = (() => {
-    const doc = getDocumentBySlug(slug);
-    return typeof doc?.access_epoch === 'number' ? doc.access_epoch : null;
-  })();
-  const recentLeases = getRecentCollabSessionLeaseCount(slug, accessEpoch);
-  if (activeCollabClients > 0 || recentLeases > 0) {
-    recordProjectionRepair('skipped', `on_demand_${source}:live_collab_present`);
+  if (activeCollabClients > 0) {
+    recordProjectionRepair('skipped', `on_demand_${source}:active_collab_clients`);
     return true;
+  }
+  // Recent-but-closed collab leases linger in the DB for COLLAB_SESSION_TTL_SECONDS
+  // (default 300s) after the last WS disconnects. Upstream defers projection repair
+  // for that whole window, which prevents agent rewrites and comment writes for ~5
+  // minutes after a human closes their editor tab. For our private 2–3 person
+  // deployment that's overly conservative — projection rebuilds from Yjs are CRDT-safe
+  // even if a lease is lingering. So we only honor lease-based deferral when explicitly
+  // opted in via COLLAB_DEFER_REPAIR_ON_LEASES=1.
+  if (parseBooleanFlag(process.env.COLLAB_DEFER_REPAIR_ON_LEASES, false)) {
+    const accessEpoch = (() => {
+      const doc = getDocumentBySlug(slug);
+      return typeof doc?.access_epoch === 'number' ? doc.access_epoch : null;
+    })();
+    const recentLeases = getRecentCollabSessionLeaseCount(slug, accessEpoch);
+    if (recentLeases > 0) {
+      recordProjectionRepair('skipped', `on_demand_${source}:recent_collab_leases`);
+      return true;
+    }
   }
   return false;
 }
